@@ -2,37 +2,44 @@ package com.charan.claimsprocessingsystem.service;
 
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;  // For DI (why? Spring injects; if not, manual new – tight coupling).
-import org.springframework.stereotype.Service;  // Marks as service (why? Spring bean – auto-managed; if not, no DI).
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-import com.charan.claimsprocessingsystem.entity.Claim;  // Import entity (why? Use Claim object; if not, can't reference).
-import com.charan.claimsprocessingsystem.repository.ClaimRepository;  // Import repo (why? For DB calls; if not, no save/find).
-
+import com.charan.claimsprocessingsystem.entity.Claim;
+import com.charan.claimsprocessingsystem.integration.FraudDetectionService;
+import com.charan.claimsprocessingsystem.integration.NotificationService;
+import com.charan.claimsprocessingsystem.repository.ClaimRepository;
 @Service
 public class ClaimService {
     @Autowired
-    private ClaimRepository repository;  // Why? DI repo – call save/find; why should? Auto-wired; if not, manual init – errors.
-
-    public Claim submitClaim(Claim claim) {  // Why? Submit method – entry for new claims.
-        claim.setStatus("SUBMITTED");  // Why? Business rule – initial state; if not, default null – logic breaks.
-        return repository.save(claim);  // Why? Save to DB; if not, no persistence – data lost.
+    private ClaimRepository repository;
+    @Autowired  // Added – fixes NPE.
+    private FraudDetectionService fraudService;
+ // Add field
+    @Autowired
+    private NotificationService notificationService;
+    public Claim submitClaim(Claim claim) {
+        claim.setStatus("SUBMITTED");
+        return repository.save(claim);
     }
 
-    public Claim validateClaim(Long id) {  // Why? Validate method – update based on rules.
-        Claim claim = repository.findById(id).orElseThrow(() -> new RuntimeException("Claim not found"));  // Why? Find or error; why should? Handle missing – robust; if not, null pointer crash.
-        if (claim.getAmount() > 0 && claim.getDescription() != null && !claim.getDescription().isEmpty()) {  // Why? Rule check; if not, no validation – invalid data saved.
+    public Claim validateClaim(Long id) {
+        Claim claim = repository.findById(id).orElseThrow(() -> new RuntimeException("Claim not found"));
+        if (claim.getAmount() > 0 && claim.getDescription() != null && !claim.getDescription().isEmpty() && !fraudService.isFraudulent(claim.getAmount())) {
             claim.setStatus("VALIDATED");
+            notificationService.sendEmail("user@email.com", "Claim Validated", "ID " + id + " validated."); // Why? Notify.
+            notificationService.sendSms("1234567890", "Claim ID " + id + " validated.");
         } else {
             claim.setStatus("REJECTED");
         }
-        return repository.save(claim);  // Why? Update in DB; if not, changes not persisted.
+        return repository.save(claim);
     }
 
-    public List<Claim> getAllClaims() {  // Why? Get all – for listing.
-        return repository.findAll();  // Why? Repo method – free; if not, manual query – code bloat.
+    public List<Claim> getAllClaims() {
+        return repository.findAll();
     }
 
-    public Claim getClaimById(Long id) {  // Why? Get one – for tracking.
+    public Claim getClaimById(Long id) {
         return repository.findById(id).orElseThrow(() -> new RuntimeException("Claim not found"));
     }
 }
